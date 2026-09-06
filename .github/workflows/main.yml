@@ -8,20 +8,309 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Recuperer le projet
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Installer Java
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Compiler l'application
-        run: chmod +x gradlew && ./gradlew assembleDebug
+      - name: Create Android project
+        shell: bash
+        run: |
+          set -e
+          mkdir -p app/src/main/java/com/howdeep/app
+          mkdir -p app/src/main/res/values
+          mkdir -p app/src/main/res/drawable
 
-      - name: Recuperer l'APK
+          cat > settings.gradle <<'EOF'
+          pluginManagement { repositories { google(); mavenCentral(); gradlePluginPortal() } }
+          dependencyResolutionManagement { repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS); repositories { google(); mavenCentral() } }
+          rootProject.name='HowDeep'
+          include ':app'
+          EOF
+
+          cat > build.gradle <<'EOF'
+          plugins {
+              id 'com.android.application' version '8.6.1' apply false
+          }
+          EOF
+
+          cat > gradle.properties <<'EOF'
+          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
+          EOF
+
+          cat > app/build.gradle <<'EOF'
+          plugins { id 'com.android.application' }
+          android {
+              namespace 'com.howdeep.app'
+              compileSdk 35
+              defaultConfig {
+                  applicationId 'com.howdeep.app'
+                  minSdk 23
+                  targetSdk 35
+                  versionCode 1
+                  versionName '1.0'
+              }
+          }
+          EOF
+
+          cat > app/src/main/res/values/styles.xml <<'EOF'
+          <resources>
+            <style name="AppTheme" parent="android:style/Theme.Material.NoActionBar">
+              <item name="android:fontFamily">sans</item>
+              <item name="android:windowLightStatusBar">false</item>
+              <item name="android:statusBarColor">#08080C</item>
+              <item name="android:navigationBarColor">#08080C</item>
+              <item name="android:colorAccent">#B784FF</item>
+            </style>
+          </resources>
+          EOF
+
+          cat > app/src/main/res/drawable/ic_launcher.xml <<'EOF'
+          <vector xmlns:android="http://schemas.android.com/apk/res/android"
+            android:width="108dp" android:height="108dp"
+            android:viewportWidth="108" android:viewportHeight="108">
+            <path android:fillColor="#B784FF" android:pathData="M54,4A50,50 0,1 0,54 104A50,50 0,1 0,54 4"/>
+            <path android:fillColor="#12091B" android:pathData="M30,33L78,33L78,69L62,69L54,80L46,69L30,69Z"/>
+            <path android:fillColor="#FFFFFF" android:pathData="M39,44L69,44L69,48L39,48ZM39,55L62,55L62,59L39,59Z"/>
+          </vector>
+          EOF
+
+          cat > app/src/main/AndroidManifest.xml <<'EOF'
+          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+            <application android:theme="@style/AppTheme" android:label="How Deep?" android:icon="@drawable/ic_launcher">
+              <activity android:name=".MainActivity" android:screenOrientation="portrait" android:exported="true">
+                <intent-filter>
+                  <action android:name="android.intent.action.MAIN"/>
+                  <category android:name="android.intent.category.LAUNCHER"/>
+                </intent-filter>
+              </activity>
+            </application>
+          </manifest>
+          EOF
+
+          cat > app/src/main/java/com/howdeep/app/MainActivity.java <<'JAVA'
+          package com.howdeep.app;
+
+          import android.app.*;
+          import android.os.*;
+          import android.graphics.*;
+          import android.view.*;
+          import android.widget.*;
+          import java.util.*;
+
+          public class MainActivity extends Activity {
+            LinearLayout root, cats;
+            TextView category, question, counter;
+            ArrayList<Question> all = new ArrayList<>(), pool = new ArrayList<>(), history = new ArrayList<>();
+            int index = 0;
+            String selected = "Toutes";
+            int purple = Color.rgb(183,132,255);
+
+            static class Question {
+              String cat, text;
+              Question(String c,String t){cat=c;text=t;}
+            }
+
+            TextView text(String s,float size){
+              TextView v=new TextView(this);
+              v.setText(s); v.setTextColor(Color.WHITE); v.setTextSize(size);
+              v.setPadding(16,10,16,10); return v;
+            }
+
+            Button button(String s){
+              Button b=new Button(this);
+              b.setText(s); b.setTextColor(Color.WHITE); b.setTextSize(13);
+              b.setAllCaps(false); b.setBackgroundColor(Color.rgb(37,37,48)); return b;
+            }
+
+            public void onCreate(Bundle b){
+              super.onCreate(b);
+              getWindow().setStatusBarColor(Color.rgb(8,8,12));
+              getWindow().setNavigationBarColor(Color.rgb(8,8,12));
+              load();
+              build();
+              select("Toutes");
+            }
+
+            void build(){
+              ScrollView sc=new ScrollView(this);
+              root=new LinearLayout(this); root.setOrientation(LinearLayout.VERTICAL);
+              root.setPadding(16,18,16,28); root.setBackgroundColor(Color.rgb(8,8,12));
+              sc.addView(root);
+
+              TextView logo=text("DEEP QUESTIONS",12); logo.setTextColor(purple); logo.setGravity(17); root.addView(logo);
+              TextView title=text("How Deep?",28); title.setTypeface(Typeface.DEFAULT,1); title.setGravity(17); root.addView(title);
+              TextView sub=text("Une question. Une réponse. Une conversation.",13); sub.setTextColor(Color.LTGRAY); sub.setGravity(17); root.addView(sub);
+
+              cats=new LinearLayout(this); cats.setOrientation(LinearLayout.HORIZONTAL);
+              root.addView(cats,new LinearLayout.LayoutParams(-1,60));
+
+              LinearLayout card=new LinearLayout(this); card.setOrientation(LinearLayout.VERTICAL); card.setGravity(Gravity.CENTER_VERTICAL);
+              card.setPadding(24,28,24,28); card.setBackgroundColor(Color.rgb(24,24,33));
+              root.addView(card,new LinearLayout.LayoutParams(-1,0,1));
+
+              category=text("",12); category.setTextColor(purple); category.setTypeface(null,1);
+              question=text("",24); question.setTypeface(null,1);
+              counter=text("",12); counter.setTextColor(Color.LTGRAY);
+              card.addView(category); card.addView(question); card.addView(counter);
+
+              LinearLayout acts=new LinearLayout(this); acts.setOrientation(LinearLayout.HORIZONTAL);
+              root.addView(acts,new LinearLayout.LayoutParams(-1,62));
+              Button prev=button("↩ Retour"), rnd=button("🎲 Aléatoire"), next=button("Suivante ➜");
+              acts.addView(prev,new LinearLayout.LayoutParams(0,-1,1));
+              acts.addView(rnd,new LinearLayout.LayoutParams(0,-1,1));
+              acts.addView(next,new LinearLayout.LayoutParams(0,-1,1));
+              prev.setOnClickListener(v->prev()); rnd.setOnClickListener(v->random()); next.setOnClickListener(v->next());
+
+              Button hist=button("🕘 Voir l'historique"); root.addView(hist,new LinearLayout.LayoutParams(-1,58));
+              hist.setOnClickListener(v->showHistory());
+              setContentView(sc);
+            }
+
+            void load(){
+              Collections.addAll(all, QUESTIONS);
+            }
+
+            void select(String c){
+              selected=c; pool.clear();
+              for(Question q:all) if(c.equals("Toutes")||q.cat.equals(c)) pool.add(q);
+              Collections.shuffle(pool); index=0; renderCats(); show();
+            }
+
+            void renderCats(){
+              cats.removeAllViews();
+              LinkedHashSet<String> names=new LinkedHashSet<>(); names.add("Toutes");
+              for(Question q:all) names.add(q.cat);
+              for(String c:names){
+                Button b=button(c); if(c.equals(selected)) b.setTextColor(purple);
+                b.setOnClickListener(v->select(c));
+                cats.addView(b,new LinearLayout.LayoutParams(-2,-1));
+              }
+            }
+
+            void show(){
+              if(pool.isEmpty()) return;
+              Question q=pool.get(index);
+              category.setText(q.cat.toUpperCase(Locale.ROOT));
+              question.setText(q.text);
+              counter.setText("Question "+(index+1)+" / "+pool.size());
+              history.removeIf(x->x.text.equals(q.text)); history.add(0,q);
+              if(history.size()>20) history.remove(history.size()-1);
+            }
+
+            void next(){index=(index+1)%pool.size();show();}
+            void prev(){index=(index-1+pool.size())%pool.size();show();}
+            void random(){index=new Random().nextInt(pool.size());show();}
+
+            void showHistory(){
+              StringBuilder s=new StringBuilder();
+              for(Question q:history) s.append("• ").append(q.cat).append("\n").append(q.text).append("\n\n");
+              new AlertDialog.Builder(this).setTitle("Historique")
+                .setMessage(s.length()==0?"Aucune question vue.":s.toString())
+                .setPositiveButton("Fermer",null).show();
+            }
+
+            static final Question[] QUESTIONS = new Question[] {
+              new Question("Niveau 1 — Ice breakers", "What's the first memory you have with me?"),
+              new Question("Niveau 1 — Ice breakers", "What's a place you need to travel to before you die?"),
+              new Question("Niveau 1 — Ice breakers", "What insecurities have you grown out of?"),
+              new Question("Niveau 1 — Ice breakers", "Who's your go-to music artist when you are feeling down?"),
+              new Question("Niveau 1 — Ice breakers", "What motivates you in life?"),
+              new Question("Niveau 1 — Ice breakers", "What is on your mind right now?"),
+              new Question("Niveau 1 — Ice breakers", "What's something you did with pure kindness but didn't tell anyone?"),
+              new Question("Niveau 1 — Ice breakers", "What is the first thing you think people notice about you?"),
+              new Question("Niveau 1 — Ice breakers", "What's a small insecurity of yours?"),
+              new Question("Niveau 1 — Ice breakers", "When's the last time you gave somebody a compliment?"),
+              new Question("Niveau 1 — Ice breakers", "Who do you love most in life and why?"),
+              new Question("Niveau 1 — Ice breakers", "What has life taught you recently?"),
+              new Question("Niveau 1 — Ice breakers", "What's something simple that makes you smile?"),
+              new Question("Niveau 1 — Ice breakers", "What is your favorite compliment someone has given to you?"),
+              new Question("Niveau 1 — Ice breakers", "What has been the highlight of your day?"),
+              new Question("Niveau 1 — Ice breakers", "What's something your parents warned you about that ended up being true?"),
+              new Question("Niveau 1 — Ice breakers", "What's a song you play by yourself, but never with other people?"),
+              new Question("Niveau 1 — Ice breakers", "What would you honestly rate yourself as a person from 1–10 and why?"),
+              new Question("Niveau 1 — Ice breakers", "When was the last time you were really excited? What was it about?"),
+              new Question("Niveau 1 — Ice breakers", "When do you feel most at peace?"),
+              new Question("Niveau 1 — Ice breakers", "If you could compliment yourself, what would you say?"),
+              new Question("Niveau 1 — Ice breakers", "Who is a person that uplifts your spirit? How?"),
+              new Question("Niveau 1 — Ice breakers", "What is your favorite trait about yourself?"),
+              new Question("Niveau 1 — Ice breakers", "What would you honestly rate yourself 1–10? Why?"),
+              new Question("Niveau 1 — Ice breakers", "What's an insecurity of yours?"),
+              new Question("Niveau 1 — Ice breakers", "What's one big thing you want to change about yourself?"),
+              new Question("Niveau 1 — Ice breakers", "Who do you love most in life?"),
+
+              new Question("Niveau 2 — Confessions", "What have you done that you aren't proud of?"),
+              new Question("Niveau 2 — Confessions", "What's something normal to you that other people find weird?"),
+              new Question("Niveau 2 — Confessions", "What is the most humbling experience you've had?"),
+              new Question("Niveau 2 — Confessions", "What do you think your past self would think of you now?"),
+              new Question("Niveau 2 — Confessions", "If you could bring someone back, who would it be? Why them?"),
+              new Question("Niveau 2 — Confessions", "What do you feel you deserve?"),
+              new Question("Niveau 2 — Confessions", "What excuses do you make that hold you back?"),
+              new Question("Niveau 2 — Confessions", "Why have you kept going?"),
+              new Question("Niveau 2 — Confessions", "What are you currently addicted to?"),
+              new Question("Niveau 2 — Confessions", "What's your biggest insecurity?"),
+              new Question("Niveau 2 — Confessions", "What's something normal to you that other people find weird?"),
+              new Question("Niveau 2 — Confessions", "What's a memory you never want to let go of?"),
+              new Question("Niveau 2 — Confessions", "How are you? But be more transparent than usual."),
+              new Question("Niveau 2 — Confessions", "What's something you would be judged for if people knew?"),
+              new Question("Niveau 2 — Confessions", "What is a time you felt the most second-hand embarrassment?"),
+              new Question("Niveau 2 — Confessions", "What is a chance you are glad you took?"),
+              new Question("Niveau 2 — Confessions", "What was the happiest point in your life?"),
+              new Question("Niveau 2 — Confessions", "When was the last time you let your ego get in the way?"),
+              new Question("Niveau 2 — Confessions", "What have you been feeling too embarrassed to admit?"),
+              new Question("Niveau 2 — Confessions", "When is the last time you said 'I love you' and really meant it?"),
+              new Question("Niveau 2 — Confessions", "What's a core memory you have?"),
+              new Question("Niveau 2 — Confessions", "What are you afraid to let go of?"),
+              new Question("Niveau 2 — Confessions", "What have you done that you are proud of?"),
+              new Question("Niveau 2 — Confessions", "What's the most embarrassing memory you have?"),
+              new Question("Niveau 2 — Confessions", "What is something you have been told that you will never forget?"),
+              new Question("Niveau 2 — Confessions", "What's a conspiracy theory you believe in?"),
+              new Question("Niveau 2 — Confessions", "What is the last time you cried and why?"),
+              new Question("Niveau 2 — Confessions", "What's something meaningful to you, but not to others?"),
+              new Question("Niveau 2 — Confessions", "What is your biggest struggle right now?"),
+
+              new Question("Niveau 3 — Getting deep", "What is a dream you let go of, but it hurts?"),
+              new Question("Niveau 3 — Getting deep", "What is something you are really passionate about but don't tell anyone?"),
+              new Question("Niveau 3 — Getting deep", "What are the toughest demons you're fighting?"),
+              new Question("Niveau 3 — Getting deep", "What do you owe yourself?"),
+              new Question("Niveau 3 — Getting deep", "Describe your favorite moment in life. How does it feel now?"),
+              new Question("Niveau 3 — Getting deep", "What are you afraid of passing down to your kids?"),
+              new Question("Niveau 3 — Getting deep", "Are you holding onto something you need to let go of?"),
+              new Question("Niveau 3 — Getting deep", "What do you wish people knew about you?"),
+              new Question("Niveau 3 — Getting deep", "Who is a stranger you will always remember?"),
+              new Question("Niveau 3 — Getting deep", "What chance do you wish you took?"),
+              new Question("Niveau 3 — Getting deep", "Describe your worst heartbreak. What did it teach you?"),
+              new Question("Niveau 3 — Getting deep", "What is one thing you would change about society?"),
+              new Question("Niveau 3 — Getting deep", "Are you holding onto something you need to let go of?"),
+              new Question("Niveau 3 — Getting deep", "Describe a memory that feels like a movie."),
+              new Question("Niveau 3 — Getting deep", "What do you do that you aren't proud of?"),
+              new Question("Niveau 3 — Getting deep", "What's a goodbye you wish you could re-do?"),
+
+              new Question("Wild cards", "What is a recent leap of faith that worked out?"),
+              new Question("Wild cards", "Think of a memory when time didn't seem to exist. Explain the little details."),
+              new Question("Wild cards", "Describe a moment that helped you believe in love."),
+              new Question("Wild cards", "What is a phrase that always feels good to hear?"),
+              new Question("Wild cards", "What is something only you know makes you happy on the inside?"),
+              new Question("Wild cards", "If you could remind everyone here of just one thing, what would it be?"),
+              new Question("Wild cards", "Call someone and tell them you love them."),
+              new Question("Wild cards", "Show your favorite picture and describe its meaning."),
+              new Question("Wild cards", "What comes to mind when you hear the word 'peaceful'?")
+            };
+          }
+          JAVA
+
+          gradle wrapper --gradle-version 8.7
+          chmod +x gradlew
+
+      - name: Build APK
+        run: ./gradlew assembleDebug --stacktrace
+
+      - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: How-Deep-APK
-          path: '**/build/outputs/apk/debug/*.apk' 
+          path: app/build/outputs/apk/debug/app-debug.apk
