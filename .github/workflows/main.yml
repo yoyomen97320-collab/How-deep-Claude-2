@@ -1,0 +1,27 @@
+name: Build How Deep APK
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Recuperer le projet
+        uses: actions/checkout@v4
+
+      - name: Installer Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Compiler l'application
+        run: chmod +x gradlew && ./gradlew assembleDebug
+
+      - name: Recuperer l'APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: How-Deep-APK
+          path: '**/build/outputs/apk/debug/*.apk' 
